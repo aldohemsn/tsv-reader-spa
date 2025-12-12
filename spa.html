@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TSV Reader</title>
+
+    <!-- Fonts: Inter (Local) -->
+    <link rel="stylesheet" href="vendor/css/fonts.css">
+
+    <!-- Tailwind CSS (Local) -->
+    <script src="vendor/js/tailwind.js"></script>
+
+    <!-- React & ReactDOM (Local) -->
+    <script src="vendor/js/react.production.min.js"></script>
+    <script src="vendor/js/react-dom.production.min.js"></script>
+
+    <!-- Babel for JSX (Local) -->
+    <script src="vendor/js/babel.min.js"></script>
+
+    <style>
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        }
+    </style>
+</head>
+
+<body class="bg-gray-100 text-gray-800">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useMemo, useRef, useEffect } = React;
+
+        // --- Icons (Inlined for standalone stability) ---
+        const IconBase = ({ children, className = "", ...props }) => (
+            <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="24" height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className={className}
+                {...props}
+            >
+                {children}
+            </svg>
+        );
+
+        const Upload = (props) => <IconBase {...props}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" x2="12" y1="3" y2="15" /></IconBase>;
+        const FileText = (props) => <IconBase {...props}><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" /><polyline points="14 2 14 8 20 8" /></IconBase>;
+        const Search = (props) => <IconBase {...props}><circle cx="11" cy="11" r="8" /><line x1="21" x2="16.65" y1="21" y2="16.65" /></IconBase>;
+        const Trash2 = (props) => <IconBase {...props}><path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><line x1="10" x2="10" y1="11" y2="17" /><line x1="14" x2="14" y1="11" y2="17" /></IconBase>;
+        const ChevronLeft = (props) => <IconBase {...props}><polyline points="15 18 9 12 15 6" /></IconBase>;
+        const ChevronRight = (props) => <IconBase {...props}><polyline points="9 18 15 12 9 6" /></IconBase>;
+        const ArrowUpDown = (props) => <IconBase {...props}><path d="m7 15 5 5 5-5" /><path d="m7 9 5-5 5 5" /></IconBase>;
+        const ArrowUp = (props) => <IconBase {...props}><line x1="12" x2="12" y1="19" y2="5" /><polyline points="5 12 12 5 19 12" /></IconBase>;
+        const ArrowDown = (props) => <IconBase {...props}><line x1="12" x2="12" y1="5" y2="19" /><polyline points="19 12 12 19 5 12" /></IconBase>;
+        const AlertCircle = (props) => <IconBase {...props}><circle cx="12" cy="12" r="10" /><line x1="12" x2="12" y1="8" y2="12" /><line x1="12" x2="12.01" y1="16" y2="16" /></IconBase>;
+        const WrapText = (props) => <IconBase {...props}><path d="M3 6h18" /><path d="M3 12h15a3 3 0 1 1 0 6h-4" /><polyline points="16 16 14 18 16 20" /></IconBase>;
+        const Hash = (props) => <IconBase {...props}><line x1="4" x2="20" y1="9" y2="9" /><line x1="4" x2="20" y1="15" y2="15" /><line x1="10" x2="8" y1="3" y2="21" /><line x1="16" x2="14" y1="3" y2="21" /></IconBase>;
+        const Download = (props) => <IconBase {...props}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" x2="12" y1="15" y2="3" /></IconBase>;
+        const X = (props) => <IconBase {...props}><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></IconBase>;
+
+        // --- Components ---
+
+        const Button = ({
+            children,
+            onClick,
+            variant = 'primary',
+            className = '',
+            disabled = false,
+            title = ''
+        }) => {
+            const baseStyles = "px-4 py-2 rounded-lg font-medium transition-all duration-200 flex items-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed";
+
+            const variants = {
+                primary: "bg-blue-600 hover:bg-blue-700 text-white shadow-md hover:shadow-lg",
+                secondary: "bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 shadow-sm",
+                danger: "bg-red-50 hover:bg-red-100 text-red-600 border border-red-200",
+                ghost: "bg-transparent hover:bg-gray-100 text-gray-600",
+                success: "bg-emerald-600 hover:bg-emerald-700 text-white shadow-md hover:shadow-lg"
+            };
+
+            return (
+                <button
+                    onClick={onClick}
+                    className={`${baseStyles} ${variants[variant]} ${className}`}
+                    disabled={disabled}
+                    title={title}
+                >
+                    {children}
+                </button>
+            );
+        };
+
+        function TSVReader() {
+            // --- State ---
+            const [data, setData] = useState(null);
+            const [fileName, setFileName] = useState('');
+            const [loading, setLoading] = useState(false);
+            const [error, setError] = useState(null);
+            const [searchTerm, setSearchTerm] = useState('');
+            const [idFilter, setIdFilter] = useState('');
+            const [currentPage, setCurrentPage] = useState(1);
+            const [rowsPerPage, setRowsPerPage] = useState(15);
+            const [sortConfig, setSortConfig] = useState(null);
+            const [isWrapped, setIsWrapped] = useState(false);
+
+            // Export Modal State
+            const [showExportModal, setShowExportModal] = useState(false);
+            const [selectedColumns, setSelectedColumns] = useState(new Set());
+
+            const fileInputRef = useRef(null);
+
+            // --- Effects ---
+
+            // Note: selectedColumns starts empty - user must manually select columns to export
+
+            // --- Handlers ---
+
+            const parseTSV = (text) => {
+                try {
+                    const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
+
+                    if (lines.length === 0) {
+                        throw new Error("File appears to be empty.");
+                    }
+
+                    const headers = lines[0].split('\t');
+
+                    const rows = lines.slice(1).map(line => {
+                        const cells = line.split('\t');
+                        while (cells.length < headers.length) {
+                            cells.push('');
+                        }
+                        return cells;
+                    });
+
+                    setData({ headers, rows });
+                    setError(null);
+                } catch (err) {
+                    setError("Failed to parse file. Ensure it is a valid TSV.");
+                    console.error(err);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            const handleFileUpload = (event) => {
+                const file = event.target.files?.[0];
+                if (!file) return;
+
+                setLoading(true);
+                setFileName(file.name);
+
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const text = e.target?.result;
+                    if (typeof text === 'string') {
+                        parseTSV(text);
+                    }
+                };
+                reader.onerror = () => {
+                    setError("Error reading file.");
+                    setLoading(false);
+                };
+                reader.readAsText(file);
+            };
+
+            const handleDragOver = (e) => {
+                e.preventDefault();
+            };
+
+            const handleDrop = (e) => {
+                e.preventDefault();
+                const file = e.dataTransfer.files?.[0];
+                if (file) {
+                    setLoading(true);
+                    setFileName(file.name);
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        const text = e.target?.result;
+                        if (typeof text === 'string') {
+                            parseTSV(text);
+                        }
+                    };
+                    reader.readAsText(file);
+                }
+            };
+
+            const handleSort = (columnIndex) => {
+                let direction = 'ascending';
+
+                if (sortConfig && sortConfig.key === columnIndex && sortConfig.direction === 'ascending') {
+                    direction = 'descending';
+                }
+
+                setSortConfig({ key: columnIndex, direction });
+            };
+
+            const resetData = () => {
+                setData(null);
+                setFileName('');
+                setError(null);
+                setSearchTerm('');
+                setIdFilter('');
+                setSortConfig(null);
+                setCurrentPage(1);
+                setIsWrapped(false);
+                setShowExportModal(false);
+                if (fileInputRef.current) fileInputRef.current.value = '';
+            };
+
+            const toggleColumnSelection = (index) => {
+                const newSelection = new Set(selectedColumns);
+                if (newSelection.has(index)) {
+                    newSelection.delete(index);
+                } else {
+                    newSelection.add(index);
+                }
+                setSelectedColumns(newSelection);
+            };
+
+            const selectAllColumns = () => {
+                if (!data) return;
+                setSelectedColumns(new Set(data.headers.map((_, i) => i)));
+            };
+
+            const deselectAllColumns = () => {
+                setSelectedColumns(new Set());
+            };
+
+            // --- Derived State (Filtering & Sorting) ---
+
+            const processedRows = useMemo(() => {
+                if (!data) return [];
+
+                let rows = [...data.rows];
+
+                // 1. ID Filter
+                if (idFilter.trim()) {
+                    const segments = idFilter.split(/[,，\s]+/).filter(Boolean);
+                    const exactIds = new Set();
+                    const ranges = [];
+
+                    segments.forEach(seg => {
+                        if (seg.includes('-')) {
+                            const parts = seg.split('-');
+                            if (parts.length === 2) {
+                                const start = parseInt(parts[0], 10);
+                                const end = parseInt(parts[1], 10);
+                                if (!isNaN(start) && !isNaN(end)) {
+                                    ranges.push({ min: Math.min(start, end), max: Math.max(start, end) });
+                                }
+                            }
+                        } else {
+                            exactIds.add(seg.trim());
+                        }
+                    });
+
+                    if (exactIds.size > 0 || ranges.length > 0) {
+                        rows = rows.filter(row => {
+                            const rowIdStr = row[0] ? row[0].trim() : '';
+
+                            if (exactIds.has(rowIdStr)) return true;
+
+                            if (ranges.length > 0) {
+                                const rowIdNum = parseInt(rowIdStr, 10);
+                                if (!isNaN(rowIdNum)) {
+                                    return ranges.some(r => rowIdNum >= r.min && rowIdNum <= r.max);
+                                }
+                            }
+
+                            return false;
+                        });
+                    }
+                }
+
+                // 2. Search Filter
+                if (searchTerm) {
+                    const lowerTerm = searchTerm.toLowerCase();
+                    rows = rows.filter(row =>
+                        row.some(cell => cell.toLowerCase().includes(lowerTerm))
+                    );
+                }
+
+                // 3. Sort
+                if (sortConfig !== null) {
+                    rows.sort((a, b) => {
+                        const aVal = a[sortConfig.key];
+                        const bVal = b[sortConfig.key];
+
+                        const aNum = parseFloat(aVal);
+                        const bNum = parseFloat(bVal);
+
+                        if (!isNaN(aNum) && !isNaN(bNum)) {
+                            return sortConfig.direction === 'ascending' ? aNum - bNum : bNum - aNum;
+                        }
+
+                        if (aVal < bVal) {
+                            return sortConfig.direction === 'ascending' ? -1 : 1;
+                        }
+                        if (aVal > bVal) {
+                            return sortConfig.direction === 'ascending' ? 1 : -1;
+                        }
+                        return 0;
+                    });
+                }
+
+                return rows;
+            }, [data, searchTerm, idFilter, sortConfig]);
+
+            // --- Export Handler ---
+            const executeExport = () => {
+                if (!processedRows.length || !data) return;
+
+                const columnIndices = Array.from(selectedColumns).sort((a, b) => a - b);
+
+                if (columnIndices.length === 0) {
+                    alert("Please select at least one column to export.");
+                    return;
+                }
+
+                const headerRow = columnIndices.map(i => data.headers[i]).join('\t');
+
+                const dataRows = processedRows.map(row => {
+                    return columnIndices.map(i => row[i]).join('\t');
+                }).join('\n');
+
+                const tsvContent = `${headerRow}\n${dataRows}`;
+
+                const blob = new Blob([tsvContent], { type: 'text/tab-separated-values;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+
+                const nameParts = fileName.split('.');
+                const ext = nameParts.pop();
+                const baseName = nameParts.join('.');
+                link.download = `${baseName}_filtered.${ext || 'tsv'}`;
+
+                link.href = url;
+                link.click();
+
+                URL.revokeObjectURL(url);
+                setShowExportModal(false);
+            };
+
+            // --- Pagination Logic ---
+            const totalPages = Math.ceil(processedRows.length / rowsPerPage);
+            const currentRows = processedRows.slice(
+                (currentPage - 1) * rowsPerPage,
+                currentPage * rowsPerPage
+            );
+
+            // --- Render ---
+
+            if (!data) {
+                return (
+                    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6 font-sans">
+                        <div
+                            className="w-full max-w-xl bg-white rounded-2xl shadow-xl p-10 text-center border-2 border-dashed border-gray-300 hover:border-blue-500 transition-colors cursor-pointer group"
+                            onDragOver={handleDragOver}
+                            onDrop={handleDrop}
+                            onClick={() => fileInputRef.current?.click()}
+                        >
+                            <div className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-6 group-hover:scale-110 transition-transform">
+                                <Upload className="w-10 h-10 text-blue-600" />
+                            </div>
+                            <h1 className="text-3xl font-bold text-gray-800 mb-2">TSV Reader</h1>
+                            <p className="text-gray-500 mb-8 text-lg">
+                                Drag & drop your Tab-Separated Values file here, <br />or click to browse.
+                            </p>
+                            <input
+                                type="file"
+                                accept=".tsv,.txt,.csv"
+                                ref={fileInputRef}
+                                onChange={handleFileUpload}
+                                className="hidden"
+                            />
+                            <Button className="mx-auto">Select File</Button>
+
+                            {loading && <p className="mt-4 text-blue-600 animate-pulse">Processing file...</p>}
+                            {error && (
+                                <div className="mt-6 p-4 bg-red-50 text-red-600 rounded-lg flex items-center justify-center gap-2">
+                                    <AlertCircle size={20} />
+                                    {error}
+                                </div>
+                            )}
+                        </div>
+                        <p className="mt-8 text-sm text-gray-400">
+                            Accepts .tsv and .txt files. All processing happens locally in your browser.
+                        </p>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="min-h-screen bg-gray-100 flex flex-col font-sans text-gray-800 relative">
+
+                    {/* Top Bar */}
+                    <div className="bg-white shadow-sm border-b sticky top-0 z-20">
+                        <div className="max-w-7xl mx-auto px-4 py-4">
+                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+
+                                {/* File Info */}
+                                <div className="flex items-center gap-3">
+                                    <div className="bg-blue-100 p-2 rounded-lg">
+                                        <FileText className="text-blue-600 w-6 h-6" />
+                                    </div>
+                                    <div>
+                                        <h1 className="font-bold text-lg leading-tight truncate max-w-xs">{fileName}</h1>
+                                        <p className="text-xs text-gray-500">
+                                            {processedRows.length.toLocaleString()} rows (filtered) • {data.headers.length} columns
+                                        </p>
+                                    </div>
+                                </div>
+
+                                {/* Controls */}
+                                <div className="flex items-center gap-3 flex-1 md:justify-end flex-wrap">
+
+                                    {/* ID Filter Input */}
+                                    <div className="relative w-full md:w-40 group">
+                                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                            <Hash className="h-4 w-4 text-gray-400 group-focus-within:text-blue-500 transition-colors" />
+                                        </div>
+                                        <input
+                                            type="text"
+                                            placeholder="IDs: 82, 100-120..."
+                                            className="block w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg leading-5 bg-gray-50 text-gray-900 placeholder-gray-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all sm:text-sm"
+                                            value={idFilter}
+                                            onChange={(e) => {
+                                                setIdFilter(e.target.value);
+                                                setCurrentPage(1);
+                                            }}
+                                            title="Filter by ID (Column 1). Use commas for multiples, hyphens for ranges."
+                                        />
+                                    </div>
+
+                                    {/* General Search Input */}
+                                    <div className="relative w-full md:w-64 group">
+                                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                            <Search className="h-4 w-4 text-gray-400 group-focus-within:text-blue-500 transition-colors" />
+                                        </div>
+                                        <input
+                                            type="text"
+                                            placeholder="Search data..."
+                                            className="block w-full pl-10 pr-3 py-2 border border-gray-200 rounded-lg leading-5 bg-gray-50 text-gray-900 placeholder-gray-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all sm:text-sm"
+                                            value={searchTerm}
+                                            onChange={(e) => {
+                                                setSearchTerm(e.target.value);
+                                                setCurrentPage(1);
+                                            }}
+                                        />
+                                    </div>
+
+                                    <div className="h-8 w-px bg-gray-300 mx-1 hidden md:block"></div>
+
+                                    {/* Wrapping Toggle */}
+                                    <Button
+                                        variant="secondary"
+                                        onClick={() => setIsWrapped(!isWrapped)}
+                                        className="whitespace-nowrap"
+                                        title={isWrapped ? "Disable text wrapping" : "Enable text wrapping"}
+                                    >
+                                        <WrapText size={16} className={isWrapped ? "text-blue-600" : "text-gray-500"} />
+                                        <span className="hidden sm:inline">{isWrapped ? "No Wrap" : "Wrap"}</span>
+                                    </Button>
+
+                                    {/* Export Button - Opens Modal */}
+                                    <Button
+                                        variant="success"
+                                        onClick={() => setShowExportModal(true)}
+                                        className="whitespace-nowrap"
+                                        title="Choose columns and export"
+                                    >
+                                        <Download size={16} />
+                                        <span className="hidden sm:inline">Export</span>
+                                    </Button>
+
+                                    <Button variant="danger" onClick={resetData} className="whitespace-nowrap">
+                                        <Trash2 size={16} />
+                                        <span className="hidden sm:inline">Close</span>
+                                    </Button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Main Content Area */}
+                    <main className="flex-1 overflow-hidden p-4 md:p-6 max-w-8xl mx-auto w-full flex flex-col">
+
+                        {/* Table Container */}
+                        <div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 flex flex-col overflow-hidden">
+
+                            {/* Scrollable Table Area */}
+                            <div className="overflow-auto flex-1 relative">
+                                <table className="min-w-full divide-y divide-gray-200">
+                                    <thead className="bg-gray-50 sticky top-0 z-10">
+                                        <tr>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 border-b w-16">
+                                                #
+                                            </th>
+                                            {data.headers.map((header, idx) => (
+                                                <th
+                                                    key={idx}
+                                                    onClick={() => handleSort(idx)}
+                                                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 hover:text-gray-700 transition-colors group select-none whitespace-nowrap"
+                                                >
+                                                    <div className="flex items-center gap-2">
+                                                        {header || `Col ${idx + 1}`}
+                                                        <span className="text-gray-300 group-hover:text-gray-500">
+                                                            {sortConfig?.key === idx ? (
+                                                                sortConfig.direction === 'ascending' ? <ArrowUp size={14} /> : <ArrowDown size={14} />
+                                                            ) : (
+                                                                <ArrowUpDown size={14} />
+                                                            )}
+                                                        </span>
+                                                    </div>
+                                                </th>
+                                            ))}
+                                        </tr>
+                                    </thead>
+                                    <tbody className="bg-white divide-y divide-gray-200">
+                                        {currentRows.length > 0 ? (
+                                            currentRows.map((row, rowIdx) => (
+                                                <tr key={rowIdx} className="hover:bg-blue-50/50 transition-colors">
+                                                    <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-400 font-mono select-none align-top">
+                                                        {(currentPage - 1) * rowsPerPage + rowIdx + 1}
+                                                    </td>
+                                                    {row.map((cell, cellIdx) => (
+                                                        <td
+                                                            key={cellIdx}
+                                                            className={`px-6 py-4 text-sm text-gray-700 align-top ${isWrapped ? 'whitespace-normal break-words min-w-[150px] max-w-3xl' : 'whitespace-nowrap max-w-xs truncate'}`}
+                                                            title={cell}
+                                                        >
+                                                            {cell}
+                                                        </td>
+                                                    ))}
+                                                </tr>
+                                            ))
+                                        ) : (
+                                            <tr>
+                                                <td colSpan={data.headers.length + 1} className="px-6 py-12 text-center text-gray-500">
+                                                    <div className="flex flex-col items-center justify-center">
+                                                        <Search className="w-12 h-12 text-gray-300 mb-3" />
+                                                        <p className="text-lg font-medium">No results found</p>
+                                                        <p className="text-sm">Try adjusting your search terms</p>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            {/* Footer / Pagination */}
+                            <div className="bg-white border-t border-gray-200 px-4 py-3 flex items-center justify-between sm:px-6">
+                                <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+                                    <div>
+                                        <p className="text-sm text-gray-700">
+                                            Showing <span className="font-medium">{Math.min(processedRows.length, (currentPage - 1) * rowsPerPage + 1)}</span> to <span className="font-medium">{Math.min(processedRows.length, currentPage * rowsPerPage)}</span> of <span className="font-medium">{processedRows.length}</span> results
+                                        </p>
+                                    </div>
+
+                                    <div className="flex items-center gap-4">
+                                        <select
+                                            value={rowsPerPage}
+                                            onChange={(e) => {
+                                                setRowsPerPage(Number(e.target.value));
+                                                setCurrentPage(1);
+                                            }}
+                                            className="text-sm border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 bg-white py-1"
+                                        >
+                                            <option value={15}>15 rows</option>
+                                            <option value={50}>50 rows</option>
+                                            <option value={100}>100 rows</option>
+                                            <option value={500}>500 rows</option>
+                                        </select>
+
+                                        <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+                                            <button
+                                                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                                                disabled={currentPage === 1}
+                                                className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                <span className="sr-only">Previous</span>
+                                                <ChevronLeft className="h-5 w-5" aria-hidden="true" />
+                                            </button>
+
+                                            {/* Simple Page Indicator */}
+                                            <span className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700">
+                                                Page {currentPage} of {totalPages || 1}
+                                            </span>
+
+                                            <button
+                                                onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                                                disabled={currentPage === totalPages || totalPages === 0}
+                                                className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                <span className="sr-only">Next</span>
+                                                <ChevronRight className="h-5 w-5" aria-hidden="true" />
+                                            </button>
+                                        </nav>
+                                    </div>
+                                </div>
+                                {/* Mobile Pagination View */}
+                                <div className="flex sm:hidden w-full justify-between items-center">
+                                    <button
+                                        onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                                        disabled={currentPage === 1}
+                                        className="px-3 py-1 border rounded text-sm disabled:opacity-50"
+                                    >
+                                        Prev
+                                    </button>
+                                    <span className="text-sm text-gray-600">
+                                        {currentPage} / {totalPages || 1}
+                                    </span>
+                                    <button
+                                        onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                                        disabled={currentPage === totalPages}
+                                        className="px-3 py-1 border rounded text-sm disabled:opacity-50"
+                                    >
+                                        Next
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                    </main>
+
+                    {/* Export Modal */}
+                    {showExportModal && (
+                        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                            <div className="bg-white rounded-xl shadow-xl w-full max-w-lg flex flex-col max-h-[90vh]">
+                                <div className="p-4 border-b flex justify-between items-center">
+                                    <h3 className="font-bold text-lg text-gray-800">Export Options</h3>
+                                    <button onClick={() => setShowExportModal(false)} className="text-gray-500 hover:text-gray-700 transition-colors p-1 rounded hover:bg-gray-100">
+                                        <X size={20} />
+                                    </button>
+                                </div>
+                                <div className="p-4 bg-gray-50 border-b flex justify-between items-center text-sm">
+                                    <span className="font-medium text-gray-600">Select columns to export:</span>
+                                    <div className="space-x-2">
+                                        <button onClick={selectAllColumns} className="text-blue-600 hover:underline">Select All</button>
+                                        <span className="text-gray-300">|</span>
+                                        <button onClick={deselectAllColumns} className="text-blue-600 hover:underline">Deselect All</button>
+                                    </div>
+                                </div>
+                                <div className="p-4 overflow-y-auto flex-1">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        {data.headers.map((header, idx) => (
+                                            <label key={idx} className="flex items-center space-x-3 p-2 rounded hover:bg-gray-50 cursor-pointer border border-transparent hover:border-gray-200 transition-colors">
+                                                <input
+                                                    type="checkbox"
+                                                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                                                    checked={selectedColumns.has(idx)}
+                                                    onChange={() => toggleColumnSelection(idx)}
+                                                />
+                                                <span className="text-sm text-gray-700 truncate select-none" title={header}>{header || `Column ${idx + 1}`}</span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div className="p-4 border-t flex justify-end gap-3 bg-gray-50 rounded-b-xl">
+                                    <Button variant="secondary" onClick={() => setShowExportModal(false)}>Cancel</Button>
+                                    <Button variant="success" onClick={executeExport} disabled={selectedColumns.size === 0}>
+                                        Download TSV
+                                    </Button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<TSVReader />);
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,13 @@
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Test files
+*.tsv
+!example.tsv
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
