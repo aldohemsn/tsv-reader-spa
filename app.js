@@ -96,6 +96,16 @@ const X = (props) => React.createElement(IconBase, props,
     React.createElement("line", { x1: "6", y1: "6", x2: "18", y2: "18" })
 );
 
+const Eye = (props) => React.createElement(IconBase, props,
+    React.createElement("path", { d: "M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" }),
+    React.createElement("circle", { cx: "12", cy: "12", r: "3" })
+);
+
+const EyeOff = (props) => React.createElement(IconBase, props,
+    React.createElement("path", { d: "M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" }),
+    React.createElement("line", { x1: "1", y1: "1", x2: "23", y2: "23" })
+);
+
 // --- Button Component ---
 const Button = ({ children, onClick, variant = 'primary', className = '', disabled = false, title = '' }) => {
     const baseStyles = "px-4 py-2 rounded-lg font-medium transition-all duration-200 flex items-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed";
@@ -133,6 +143,10 @@ function TSVReader() {
     // Export Modal State
     const [showExportModal, setShowExportModal] = useState(false);
     const [selectedColumns, setSelectedColumns] = useState(new Set());
+    
+    // Column Visibility State
+    const [hiddenColumns, setHiddenColumns] = useState(new Set());
+    const [showColumnModal, setShowColumnModal] = useState(false);
 
     const fileInputRef = useRef(null);
 
@@ -228,6 +242,8 @@ function TSVReader() {
         setIsWrapped(false);
         setShowExportModal(false);
         setSelectedColumns(new Set());
+        setHiddenColumns(new Set());
+        setShowColumnModal(false);
         if (fileInputRef.current) fileInputRef.current.value = '';
     };
 
@@ -249,6 +265,31 @@ function TSVReader() {
     const deselectAllColumns = () => {
         setSelectedColumns(new Set());
     };
+
+    const toggleColumnVisibility = (index) => {
+        const newHidden = new Set(hiddenColumns);
+        if (newHidden.has(index)) {
+            newHidden.delete(index);
+        } else {
+            newHidden.add(index);
+        }
+        setHiddenColumns(newHidden);
+    };
+
+    const showAllColumns = () => {
+        setHiddenColumns(new Set());
+    };
+
+    const hideAllColumns = () => {
+        if (!data) return;
+        setHiddenColumns(new Set(data.headers.map((_, i) => i)));
+    };
+
+    // Get visible column indices
+    const visibleColumnIndices = useMemo(() => {
+        if (!data) return [];
+        return data.headers.map((_, i) => i).filter(i => !hiddenColumns.has(i));
+    }, [data, hiddenColumns]);
 
     // --- Derived State (Filtering & Sorting) ---
     const processedRows = useMemo(() => {
@@ -464,6 +505,19 @@ function TSVReader() {
                         
                         React.createElement("div", { className: "h-8 w-px bg-gray-300 mx-1 hidden md:block" }),
 
+                        // Column Visibility Toggle
+                        React.createElement(Button, {
+                            variant: "secondary",
+                            onClick: () => setShowColumnModal(true),
+                            className: "whitespace-nowrap",
+                            title: "显示/隐藏列"
+                        },
+                            React.createElement(hiddenColumns.size > 0 ? EyeOff : Eye, { size: 16, className: hiddenColumns.size > 0 ? "text-orange-500" : "text-gray-500" }),
+                            React.createElement("span", { className: "hidden sm:inline" }, 
+                                hiddenColumns.size > 0 ? `已隐藏 ${hiddenColumns.size} 列` : "列显示"
+                            )
+                        ),
+
                         // Wrapping Toggle
                         React.createElement(Button, {
                             variant: "secondary",
@@ -511,14 +565,14 @@ function TSVReader() {
                         React.createElement("thead", { className: "bg-gray-50 sticky top-0 z-10" },
                             React.createElement("tr", null,
                                 React.createElement("th", { className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 border-b w-16" }, "#"),
-                                data.headers.map((header, idx) =>
+                                visibleColumnIndices.map(idx =>
                                     React.createElement("th", {
                                         key: idx,
                                         onClick: () => handleSort(idx),
                                         className: "px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 hover:text-gray-700 transition-colors group select-none whitespace-nowrap"
                                     },
                                         React.createElement("div", { className: "flex items-center gap-2" },
-                                            header || `列 ${idx + 1}`,
+                                            data.headers[idx] || `列 ${idx + 1}`,
                                             React.createElement("span", { className: "text-gray-300 group-hover:text-gray-500" },
                                                 sortConfig?.key === idx
                                                     ? (sortConfig.direction === 'ascending'
@@ -538,17 +592,17 @@ function TSVReader() {
                                         React.createElement("td", { className: "px-6 py-4 whitespace-nowrap text-xs text-gray-400 font-mono select-none align-top" },
                                             (currentPage - 1) * rowsPerPage + rowIdx + 1
                                         ),
-                                        row.map((cell, cellIdx) =>
+                                        visibleColumnIndices.map(cellIdx =>
                                             React.createElement("td", {
                                                 key: cellIdx,
                                                 className: `px-6 py-4 text-sm text-gray-700 align-top ${isWrapped ? 'whitespace-normal break-words min-w-[150px] max-w-3xl' : 'whitespace-nowrap max-w-xs truncate'}`,
-                                                title: cell
-                                            }, cell)
+                                                title: row[cellIdx]
+                                            }, row[cellIdx])
                                         )
                                     )
                                 )
                                 : React.createElement("tr", null,
-                                    React.createElement("td", { colSpan: data.headers.length + 1, className: "px-6 py-12 text-center text-gray-500" },
+                                    React.createElement("td", { colSpan: visibleColumnIndices.length + 1, className: "px-6 py-12 text-center text-gray-500" },
                                         React.createElement("div", { className: "flex flex-col items-center justify-center" },
                                             React.createElement(Search, { className: "w-12 h-12 text-gray-300 mb-3" }),
                                             React.createElement("p", { className: "text-lg font-medium" }, "未找到结果"),
@@ -675,6 +729,62 @@ function TSVReader() {
                 React.createElement("div", { className: "p-4 border-t flex justify-end gap-3 bg-gray-50 rounded-b-xl" },
                     React.createElement(Button, { variant: "secondary", onClick: () => setShowExportModal(false) }, "取消"),
                     React.createElement(Button, { variant: "success", onClick: executeExport, disabled: selectedColumns.size === 0 }, "下载 TSV")
+                )
+            )
+        ),
+
+        // Column Visibility Modal
+        showColumnModal && React.createElement("div", { className: "fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" },
+            React.createElement("div", { className: "bg-white rounded-xl shadow-xl w-full max-w-lg flex flex-col max-h-[90vh]" },
+                React.createElement("div", { className: "p-4 border-b flex justify-between items-center" },
+                    React.createElement("h3", { className: "font-bold text-lg text-gray-800" }, "列显示设置"),
+                    React.createElement("button", {
+                        onClick: () => setShowColumnModal(false),
+                        className: "text-gray-500 hover:text-gray-700 transition-colors p-1 rounded hover:bg-gray-100"
+                    },
+                        React.createElement(X, { size: 20 })
+                    )
+                ),
+                React.createElement("div", { className: "p-4 bg-gray-50 border-b flex justify-between items-center text-sm" },
+                    React.createElement("span", { className: "font-medium text-gray-600" }, 
+                        `勾选要显示的列（当前显示 ${visibleColumnIndices.length}/${data.headers.length} 列）：`
+                    ),
+                    React.createElement("div", { className: "space-x-2" },
+                        React.createElement("button", { onClick: showAllColumns, className: "text-blue-600 hover:underline" }, "显示全部"),
+                        React.createElement("span", { className: "text-gray-300" }, "|"),
+                        React.createElement("button", { onClick: hideAllColumns, className: "text-blue-600 hover:underline" }, "隐藏全部")
+                    )
+                ),
+                React.createElement("div", { className: "p-4 overflow-y-auto flex-1" },
+                    React.createElement("div", { className: "grid grid-cols-1 sm:grid-cols-2 gap-3" },
+                        data.headers.map((header, idx) =>
+                            React.createElement("label", {
+                                key: idx,
+                                className: `flex items-center space-x-3 p-2 rounded cursor-pointer border transition-colors ${
+                                    hiddenColumns.has(idx) 
+                                        ? 'bg-gray-100 border-gray-200 opacity-60' 
+                                        : 'hover:bg-blue-50 border-transparent hover:border-blue-200'
+                                }`
+                            },
+                                React.createElement("input", {
+                                    type: "checkbox",
+                                    className: "w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500",
+                                    checked: !hiddenColumns.has(idx),
+                                    onChange: () => toggleColumnVisibility(idx)
+                                }),
+                                React.createElement("span", { 
+                                    className: `text-sm truncate select-none ${hiddenColumns.has(idx) ? 'text-gray-400 line-through' : 'text-gray-700'}`, 
+                                    title: header 
+                                },
+                                    header || `列 ${idx + 1}`
+                                )
+                            )
+                        )
+                    )
+                ),
+                React.createElement("div", { className: "p-4 border-t flex justify-end gap-3 bg-gray-50 rounded-b-xl" },
+                    React.createElement(Button, { variant: "secondary", onClick: showAllColumns }, "重置"),
+                    React.createElement(Button, { variant: "primary", onClick: () => setShowColumnModal(false) }, "完成")
                 )
             )
         )
